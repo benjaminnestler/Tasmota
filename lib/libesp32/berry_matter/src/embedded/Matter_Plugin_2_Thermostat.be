@@ -33,10 +33,10 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
   static var CLUSTERS  = matter.consolidate_clusters(_class, {
     # 0x0003: inherited                                                               # Identify 1.2 p.16
     # 0x0004: inherited                                                               # Groups 1.3 p.21
-    0x0201: [0,3,4,5,6,0x11,0x12,0x15,0x16,0x17,0x18,0x1B,0x1C,0x29,0xFFFC,0xFFFD],  # Thermostat p.170
+    0x0201: [0,3,4,5,6,0x11,0x12,0x15,0x16,0x17,0x18,0x1B,0x1C,0x29,0xFFFC,0xFFFD],   # Thermostat p.170
     # 0x0005: inherited                                                               # Scenes 1.4 p.30 - no writable
     # 0x0009: inherited                                                               # Alarms - not described until now
-    0x0204: [0,1,0xFFFC,0xFFFD],                                                      # Thermostat User Interface Configuration
+    0x0204: [0,1,2],                                                                  # Thermostat User Interface Configuration p. 205
     # 0x0405: inherited                                                               # Relativ Humidity Measurement, 2.6 p. 103
     # 0x0402: inherited                                                               # Temperature Measurement, 2.3 p. 97
   })
@@ -60,8 +60,7 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
   # Cluster 0x204 - Thermostat User Interface Configuration
   var shadow_temperature_display_mode               # Last known Tempera­tureDis­playMode (0x0000)
   var shadow_child_lock                             # Last known Keypad­Lockout (0x0001)
-  
-  
+  var shadow_schedule_programming_visible           # Last known Sched­ulePro­gram­mingVisi­bility (0x0002)
 
   #############################################################
   # Constructor
@@ -85,14 +84,15 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
     self.shadow_min_cool_setpoint_limit = self.shadow_abs_min_cool_setpoint_limit # default = AbsMinCoolSetpointLimit
     self.shadow_max_cool_setpoint_limit = self.shadow_abs_max_cool_setpoint_limit # default = AbsMaxCoolSetpointLimit
 
-    self.shadow_control_sequence = 2                # non-default = 2 = HeatingOnly
-    self.shadow_system_mode = 4                     # non-default = 4 = Heating
+    self.shadow_control_sequence = 4                # default = 4 = HeatingAndCooling
+    self.shadow_system_mode = 1                     # default = 1 = Auto
 
     self.shadow_thermostat_running_mode = 0         # default = 0 = Off
 
     # Intit Cluster 0x204 attributes
     self.shadow_temperature_display_mode = 0        # default = 0 = °C
     self.shadow_child_lock = 0                      # default = 0 = All functions available
+    self.shadow_schedule_programming_visible = 0    # default = 0 = Local schedule pro­gramming functionality is enabled at the ther­mostat
   end
 
   #############################################################
@@ -101,9 +101,9 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
   def read_attribute(session, ctx, tlv_solo)
     import string
     print(self.DISPLAY_NAME, "read_attribute(",string.hex(ctx.cluster), string.hex(ctx.attribute),")")
-     var TLV = matter.TLV
-     var cluster = ctx.cluster
-     var attribute = ctx.attribute
+    var TLV = matter.TLV
+    var cluster = ctx.cluster
+    var attribute = ctx.attribute
 
     # ====================================================================================================
     if cluster == 0x0201              # ========== Thermostat ==========
@@ -184,6 +184,12 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
       elif attribute == 0x0001            #  ---------- Keypad­Lockout ----------
         if self.shadow_child_lock != nil
           return tlv_solo.set(TLV.U1, self.shadow_child_lock)
+        else
+          return tlv_solo.set(TLV.NULL, nil)
+        end
+      elif attribute == 0x0002            #  ---------- Sched­ulePro­gram­mingVisi­bility ----------
+        if self.shadow_schedule_programming_visible != nil
+          return tlv_solo.set(TLV.U1, self.shadow_schedule_programming_visible)
         else
           return tlv_solo.set(TLV.NULL, nil)
         end

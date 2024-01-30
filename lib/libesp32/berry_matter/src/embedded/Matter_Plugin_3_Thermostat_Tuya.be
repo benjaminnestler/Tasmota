@@ -47,6 +47,14 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
     super(self).init(device, endpoint, arguments)
     print (self.DISPLAY_NAME, "init(", str(device), ",", str(endpoint),",",str(arguments),")")
     
+    # Overwrite the Matter defaults for the thermostat cluster by Tuya defaults
+    self.shadow_abs_min_heat_setpoint_limit = 500   # default = 5°C
+    self.shadow_abs_max_heat_setpoint_limit = 3000  # default = 30°C
+    self.shadow_abs_min_cool_setpoint_limit = 500   # default = 5°C
+    self.shadow_abs_max_cool_setpoint_limit = 3000  # default = 30°C
+    self.shadow_control_sequence = 2                # default = 2 = HeatingOnly
+    self.shadow_system_mode = 4                     # default = 4 = Heating
+
     self.dpid_filter = []
     self.valueChanged = nil
     self.parse_configuration(arguments)
@@ -139,20 +147,43 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
                 self.shadow_target_temp_heat = formatedForMatterValue
               end
             elif dpId == number(self.dpid_filter[1])     #current temperature
-              formatedForMatterValue *= 10
               print(self.DISPLAY_NAME, "Received current temperature on dpID[" ,dpId, "] =", rawValue)
+              formatedForMatterValue *= 10
               self.shadow_current_temperature = formatedForMatterValue
               print(self.DISPLAY_NAME, "-> converted to LocalTemperature =", formatedForMatterValue)
             elif dpId == number(self.dpid_filter[2])     #working mode
               print(self.DISPLAY_NAME, "Received working mode on dpID[" ,dpId, "] =", rawValue)
               
               formatedForMatterValue = rawValue + 3      # conversion to SystemMode
-              print(self.DISPLAY_NAME, " -> converted to SystemMode =  ", formatedForMatterValue)
+              print(self.DISPLAY_NAME, " -> converted to SystemMode =", formatedForMatterValue)
               self.shadow_system_mode = formatedForMatterValue
 
               formatedForMatterValue = rawValue * 2     # conversion to ControlSequenceOfOperation
               print(self.DISPLAY_NAME, " -> converted to ControlSequenceOfOperation =", formatedForMatterValue)
               self.shadow_control_sequence = formatedForMatterValue
+            elif dpId == number(self.dpid_filter[3])     # switch
+              print(self.DISPLAY_NAME, "Received switch on dpID[" ,dpId, "] =", rawValue)
+              
+              if (0 == rawValue)
+                formatedForMatterValue = 0
+              elif (2 == self.shadow_control_sequence) 
+                formatedForMatterValue = 4
+              elif (0 == self.shadow_control_sequence)
+                formatedForMatterValue = 3
+              end
+
+              print(self.DISPLAY_NAME, " -> converted to SystemMode =", formatedForMatterValue)
+              self.shadow_system_mode = formatedForMatterValue
+#-
+            elif dpId == number(self.dpid_filter[4])     # set temperature upper limit
+              # TODO --> set shadow_max_heat_setpoint_limit and shadow_max_cool_setpoint_limit (MaxHeat­Set­pointLimit / MaxCool­Set­pointLimit)
+            elif dpId == number(self.dpid_filter[5])     # set temperature lower limit
+              # TODO --> set shadow_min_heat_setpoint_limit and shadow_min_cool_setpoint_limit (MinHeat­Set­pointLimit / MinCool­Set­pointLimit)
+            elif dpId == number(self.dpid_filter[6])     # child lock
+              # TODO --> set shadow_child_lock (Keypad­Lockout)
+            elif dpId == number(self.dpid_filter[7])     # Run mode
+              # TODO --> set shadow_schedule_programming_visible (Sched­ulePro­gram­mingVisi­bility)
+-#
             end
             self.valueChanged = dpId
             self.update_shadow()
@@ -287,6 +318,31 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
         print (self.DISPLAY_NAME, "unknown write_attribute!")
       end
     end
+  end
+
+  #############################################################
+  # Invoke a command
+  #
+  # returns a TLV object if successful, contains the response
+  #   or an `int` to indicate a status
+  def invoke_request(session, val, ctx)
+    import string
+    print(self.DISPLAY_NAME, "invoke_request(",string.hex(ctx.cluster), string.hex(ctx.command),")")
+    var TLV = matter.TLV
+    var cluster = ctx.cluster
+    var command = ctx.command
+
+    # ====================================================================================================
+    if cluster == 0x0201              # ========== Thermostat ==========
+      self.update_shadow_lazy()
+      if command == 0x0000                #  ---------- Set­pointRaiseLower ----------
+        print(self.DISPLAY_NAME, "invoke_request -> SetpointRaiseLower")
+        return true
+      end
+    end
+    # else
+    return super(self).invoke_request(session, val, ctx)
+
   end
 
 end
