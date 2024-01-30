@@ -29,13 +29,7 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
   
   static var ARG  = "dpid"                          # additional argument name (or empty if none)
   #static var ARG_TYPE = / x y -> int(x) int(y)     # function to convert argument to the right type
-  static var ARG_HINT = "DpIdTarTemp,DpIdCurTemp"
-  
-  # inherit from Matter_Plugin_Thermostat
-  # var shadow_target_temp_heat                     # Last known target temperature value
-  # var shadow_current_temperature                    # Last known current temperature value
-  # var shadow_control_sequence                       # Last known control sequence of operation value
-  # var shadow_system_mode                            # Last known system mode value
+  static var ARG_HINT = "TarTemp,CurTemp,WorkMode,Switch"
 
   var dpid_filter
   var rule_installed
@@ -52,6 +46,10 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
     self.shadow_abs_max_heat_setpoint_limit = 3000  # default = 30°C
     self.shadow_abs_min_cool_setpoint_limit = 500   # default = 5°C
     self.shadow_abs_max_cool_setpoint_limit = 3000  # default = 30°C
+    self.shadow_min_heat_setpoint_limit = self.shadow_abs_min_heat_setpoint_limit
+    self.shadow_max_heat_setpoint_limit = self.shadow_abs_max_heat_setpoint_limit
+    self.shadow_min_cool_setpoint_limit = self.shadow_abs_min_cool_setpoint_limit
+    self.shadow_max_cool_setpoint_limit = self.shadow_abs_max_cool_setpoint_limit
     self.shadow_control_sequence = 2                # default = 2 = HeatingOnly
     self.shadow_system_mode = 4                     # default = 4 = Heating
 
