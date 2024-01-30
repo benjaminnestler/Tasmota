@@ -34,23 +34,13 @@ import matter
 class Matter_UI
   static var _CLASSES_TYPES = "|relay|light0|light1|light2|light3|shutter|shutter+tilt"
                               "|temperature|pressure|illuminance|humidity|occupancy|onoff|contact|flow"
-                              "|ty"
+                              "|thermostat_tuya"
                               "|-virtual|v_relay|v_light0|v_light1|v_light2|v_light3"
                               "|v_temp|v_pressure|v_illuminance|v_humidity|v_occupancy|v_contact|v_flow"
   # static var _CLASSES_HTTP  = "-http"
   static var _CLASSES_TYPES2= "|http_relay|http_light0|http_light1|http_light2|http_light3"
                               "|http_temperature|http_pressure|http_illuminance|http_humidity"
                               "|http_occupancy|http_contact|http_flow"
-  static var _CLASSES_TYPES_LIST = ["relay","light0","light1","light2","light3","shutter","shutter+tilt",
-                              "temperature","pressure","illuminance","humidity","occupancy","onoff","contact","flow",
-                              "thermostat_tuya",
-                              "-virtual","v_relay","v_light0","v_light1","v_light2","v_light3",
-                              "v_temp","v_pressure","v_illuminance","v_humidity","v_occupancy","v_contact","v_flow"]
-  static var _CLASSES_TYPES2_LIST = ["http_relay","http_light0","http_light1","http_light2","http_light3",
-                              "http_temperature","http_pressure","http_illuminance","http_humidity",
-                              "http_occupancy","http_contact","http_flow"]
-
-  
   var device
 
   # ####################################################################################################
@@ -264,20 +254,20 @@ class Matter_UI
   # Exmaple:
   #   var hm = {"relay":0,"shutter+tilt":0,"light2":1,"illuminance":2,"onoff":1,"pressure":2,"light1":1,"humidity":2,"shutter":0,"occupancy":3,"temperature":2,"light3":1,"light0":1};
   #   var hl = ["Enter Relay number","Not used","Enter Filter pattern","Enter Switch number"];
-  def show_plugins_hints_js(class_list)
+  def show_plugins_hints_js(*class_list)
     import webserver
     import json
     import string
 
-    #var class_types = class_list
-    #for cl: class_list
-    #  class_types += string.split(cl, '|')
-    #end
-
+    var class_types = []
+    for cl: class_list
+      class_types += string.split(cl, '|')
+    end
+    
     var hm = {}
     var hl = []
 
-    for typ: class_list
+    for typ: class_types
       if typ == ''    continue  end
       var cl = self.device.plugins_classes.find(typ)
       if cl != nil
@@ -441,7 +431,7 @@ class Matter_UI
 
     
     # Add new endpoint section
-    self.show_plugins_hints_js(self._CLASSES_TYPES_LIST)
+    self.show_plugins_hints_js(self._CLASSES_TYPES)
 
     webserver.content_send("<p></p><fieldset><legend><b>&nbsp;Add to Configuration&nbsp;</b></legend><p></p>")
     webserver.content_send("<p><b>Add local sensor or device</b></p>"
@@ -456,7 +446,7 @@ class Matter_UI
     webserver.content_send("<tr>"
                            "<td style='font-size:smaller;'><input type='text' name='nam' size='1' value='' placeholder='(optional)'></td>"
                            "<td style='font-size:smaller;'><select id='pi' name='pi' onchange='otm(\"arg\",this.value)'>")
-    self.plugin_option('', self._CLASSES_TYPES_LIST)
+    self.plugin_option('', self._CLASSES_TYPES)
     webserver.content_send("</select></td>")
     webserver.content_send("<td style='font-size:smaller;'><input type='text' id='arg' name='arg' size='1' value=''></td>"
                            "</tr></table>")
@@ -496,13 +486,17 @@ class Matter_UI
   #- ---------------------------------------------------------------------- -#
   #- Show all possible classes for plugin
   #- ---------------------------------------------------------------------- -#
-  def plugin_option(cur, class_list)
+  def plugin_option(cur, *class_list)
     import webserver
     import string
+    var class_types = []
+    for cl: class_list
+      class_types += string.split(cl, '|')
+    end
     
     var i = 0
-    while i < size(class_list)
-      var typ = class_list[i]
+    while i < size(class_types)
+      var typ = class_types[i]
       if typ == ''
         webserver.content_send("<option value=''></option>")
       elif typ == '-virtual'
@@ -647,7 +641,7 @@ class Matter_UI
 
       var config_list = self.generate_config_from_status(status8, status11)
 
-      self.show_plugins_hints_js(self._CLASSES_TYPES2_LIST)
+      self.show_plugins_hints_js(self._CLASSES_TYPES2)
 
       webserver.content_send("<fieldset><legend><b>&nbsp;Matter Remote Device&nbsp;</b></legend><p></p>"
                              "<p><b>Add Remote sensor or device</b></p>")
@@ -680,7 +674,7 @@ class Matter_UI
 
         webserver.content_send(format("<tr><td style='font-size:smaller;'><input type='text' name='nam%i' size='1' value='' placeholder='(optional)'></td>", i))
         webserver.content_send(format("<td style='font-size:smaller;'><select name='pi%i' onchange='otm(\"arg%i\",this.value)'>", i, i))
-        self.plugin_option(typ, self._CLASSES_TYPES2_LIST)
+        self.plugin_option(typ, self._CLASSES_TYPES2)
         webserver.content_send("</select></td>"
                                "<td style='font-size:smaller;'>")
         webserver.content_send(format("<input type='text' id='arg%i' name='arg%i' size='1' value='%s' placeholder='%s'>",
@@ -691,7 +685,7 @@ class Matter_UI
       # empty line for new endpoint
       webserver.content_send(format("<tr><td style='font-size:smaller;'><input type='text' name='nam%i' size='1' value='' placeholder='(optional)'></td>", i))
       webserver.content_send(format("<td style='font-size:smaller;'><select name='pi%i' onchange='otm(\"arg%i\",this.value)'>", i, i))
-      self.plugin_option('', self._CLASSES_TYPES2_LIST)
+      self.plugin_option('', self._CLASSES_TYPES2)
       webserver.content_send("</select></td>"
                              "<td style='font-size:smaller;'>")
       webserver.content_send(format("<input type='text' id='arg%i' name='arg%i' size='1' value='%s'>",
