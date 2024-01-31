@@ -24,7 +24,7 @@ import matter
 #@ solidify:Matter_Plugin_Thermostat,weak
 
 class Matter_Plugin_Thermostat : Matter_Plugin_Device  
-  static var TYPE = "th"                            # name of the plug-in in json
+  static var TYPE = "thermostat"                    # name of the plug-in in json
   static var DISPLAY_NAME = "Thermostat"            # display name of the plug-in
 
   static var UPDATE_COMMANDS = matter.UC_LIST(_class, "Thermostat")
@@ -169,9 +169,9 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
         end
       # ---------------- Feature Map and ClusterRevision ---------------- #
       elif attribute == 0xFFFC              #  ---------- FeatureMap / map32 ----------
-        return tlv_solo.set(TLV.U4, 0x03)      # 3 = HEAT, COOL
-      elif attribute == 0xFFFD          #  ---------- ClusterRevision / u2 ----------
-        return tlv_solo.set(TLV.U4, 6)    # 6 = See matter 1.1 spec
+        return tlv_solo.set(TLV.U4, 0x03)   # 3 = HEAT, COOL
+      elif attribute == 0xFFFD              #  ---------- ClusterRevision / u2 ----------
+        return tlv_solo.set(TLV.U4, 6)      # 6 = See matter 1.1 spec
       end
     
     elif cluster == 0x0204        # ========== Thermostat User Interface Configuration ==========

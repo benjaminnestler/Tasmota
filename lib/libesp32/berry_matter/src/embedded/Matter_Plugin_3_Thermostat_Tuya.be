@@ -24,7 +24,7 @@ import matter
 #@ solidify:Matter_Plugin_Thermostat_Tuya,weak
 
 class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat  
-  static var TYPE = "thermostat_tuya"                            # name of the plug-in in json
+  static var TYPE = "thermostat_tuya"               # name of the plug-in in json
   static var DISPLAY_NAME = "Thermostat (Tuya)"     # display name of the plug-in
   
   static var ARG  = "dpid"                          # additional argument name (or empty if none)
