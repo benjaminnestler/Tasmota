@@ -29,7 +29,7 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
   
   static var ARG  = "dpid"                          # additional argument name (or empty if none)
   #static var ARG_TYPE = / x y -> int(x) int(y)     # function to convert argument to the right type
-  static var ARG_HINT = "TarTemp,CurTemp,WorkMode,Switch"
+  static var ARG_HINT = "TarTemp,CurTemp,WorkMode,Switch,Upper,Lower"   #16,24,2,1,19,26
 
   var dpid_filter
   var rule_installed
@@ -42,6 +42,8 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
     print (self.DISPLAY_NAME, "init(", str(device), ",", str(endpoint),",",str(arguments),")")
     
     # Overwrite the Matter defaults for the thermostat cluster by Tuya defaults
+    self.shadow_feature_map = 0x03                  # Heat and Cool
+    
     self.shadow_abs_min_heat_setpoint_limit = 500   # default = 5°C
     self.shadow_abs_max_heat_setpoint_limit = 3000  # default = 30°C
     self.shadow_abs_min_cool_setpoint_limit = 500   # default = 5°C
@@ -172,11 +174,33 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
 
               print(self.DISPLAY_NAME, " -> converted to SystemMode =", formatedForMatterValue)
               self.shadow_system_mode = formatedForMatterValue
-#-
             elif dpId == number(self.dpid_filter[4])     # set temperature upper limit
-              # TODO --> set shadow_max_heat_setpoint_limit and shadow_max_cool_setpoint_limit (MaxHeat­Set­pointLimit / MaxCool­Set­pointLimit)
+              print(self.DISPLAY_NAME, "Received set temperature upper limit on dpID[" ,dpId, "] =", rawValue)
+              
+              formatedForMatterValue *= 10
+              if (self.shadow_system_mode == 3)
+                print(self.DISPLAY_NAME, "-> converted to (Abs)MaxCoolSetpointLimit =", formatedForMatterValue)
+                self.shadow_max_cool_setpoint_limit = formatedForMatterValue
+                self.shadow_abs_max_cool_setpoint_limit = formatedForMatterValue
+              else
+                print(self.DISPLAY_NAME, "-> converted to (Abs)MaxHeatSetpointLimit =", formatedForMatterValue)
+                self.shadow_max_heat_setpoint_limit = formatedForMatterValue
+                self.shadow_abs_max_heat_setpoint_limit = formatedForMatterValue
+              end
             elif dpId == number(self.dpid_filter[5])     # set temperature lower limit
-              # TODO --> set shadow_min_heat_setpoint_limit and shadow_min_cool_setpoint_limit (MinHeat­Set­pointLimit / MinCool­Set­pointLimit)
+              print(self.DISPLAY_NAME, "Received set temperature lower limit on dpID[" ,dpId, "] =", rawValue)
+              
+              formatedForMatterValue *= 10
+              if (self.shadow_system_mode == 3)
+                print(self.DISPLAY_NAME, "-> converted to (Abs)MinCoolSetpointLimit =", formatedForMatterValue)
+                self.shadow_min_cool_setpoint_limit = formatedForMatterValue
+                self.shadow_abs_min_cool_setpoint_limit = formatedForMatterValue
+              else
+                print(self.DISPLAY_NAME, "-> converted to (Abs)MinHeatSetpointLimit =", formatedForMatterValue)
+                self.shadow_min_heat_setpoint_limit = formatedForMatterValue
+                self.shadow_abs_min_heat_setpoint_limit = formatedForMatterValue
+              end
+#-
             elif dpId == number(self.dpid_filter[6])     # child lock
               # TODO --> set shadow_child_lock (Keypad­Lockout)
             elif dpId == number(self.dpid_filter[7])     # Run mode
@@ -237,8 +261,11 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
     #print(self.DISPLAY_NAME, "value_changed()")
     if self.valueChanged == number(self.dpid_filter[0])
       #print(self.DISPLAY_NAME, " -> target temperature changed")
-      self.attribute_updated(0x0201, 0x0011)
-      self.attribute_updated(0x0201, 0x0012)
+      if self.shadow_system_mode == 3
+        self.attribute_updated(0x0201, 0x0011)
+      else
+        self.attribute_updated(0x0201, 0x0012)
+      end
     elif self.valueChanged == number(self.dpid_filter[1])
       #print(self.DISPLAY_NAME, " -> current temperature changed")
       self.attribute_updated(0x0201, 0x0000)
@@ -249,6 +276,22 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
     elif self.valueChanged == number(self.dpid_filter[3])
       #print(self.DISPLAY_NAME, " -> switch changed")
       self.attribute_updated(0x0201, 0x001C)
+    elif self.valueChanged == number(self.dpid_filter[4])
+      if self.shadow_system_mode == 3
+        self.attribute_updated(0x0201, 0x0018)
+        self.attribute_updated(0x0201, 0x0006)
+      else
+        self.attribute_updated(0x0201, 0x0016)
+        self.attribute_updated(0x0201, 0x0004)
+      end
+    elif self.valueChanged == number(self.dpid_filter[5])
+      if self.shadow_system_mode == 3
+        self.attribute_updated(0x0201, 0x0017)
+        self.attribute_updated(0x0201, 0x0005)
+      else
+        self.attribute_updated(0x0201, 0x0015)
+        self.attribute_updated(0x0201, 0x0003)
+      end
     end
   end
   
@@ -265,7 +308,63 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
     print(self.DISPLAY_NAME, "write_attribute(",string.hex(ctx.cluster), string.hex(ctx.attribute), str(write_data),")")
 
     if cluster == 0x0201              # ========== Thermostat ==========
-      if attribute == 0x0011          # ---------- Occu­piedCoolingSet­point ----------
+      if attribute == 0x0003          # ---------- AbsMinHeatSetpointLimit ----------
+        if type(write_data) == 'int'
+          print(self.DISPLAY_NAME, "Received AbsMinHeatSetpointLimit =", write_data)
+          self.shadow_abs_min_heat_setpoint_limit = write_data
+
+          formatedForTuya /= 10
+          print(self.DISPLAY_NAME, " -> converted to set temperature lower limit =", formatedForTuya)
+          var command = "TuyaSend2 " + self.dpid_filter[5] + "," + str(formatedForTuya)
+          tasmota.cmd(command)
+
+          self.valueChanged = number(self.dpid_filter[5])
+          self.update_shadow()
+          return true
+        end
+      elif attribute == 0x0004          # ---------- AbsMaxHeat­Set­pointLimit ----------
+        if type(write_data) == 'int'
+          print(self.DISPLAY_NAME, "Received AbsMaxHeatSetpointLimit =", write_data)
+          self.shadow_abs_max_heat_setpoint_limit = write_data
+
+          formatedForTuya /= 10
+          print(self.DISPLAY_NAME, " -> converted to set temperature upper limit =", formatedForTuya)
+          var command = "TuyaSend2 " + self.dpid_filter[4] + "," + str(formatedForTuya)
+          tasmota.cmd(command)
+
+          self.valueChanged = number(self.dpid_filter[4])
+          self.update_shadow()
+          return true
+        end
+      elif attribute == 0x0005          # ---------- AbsMinCoolSet­pointLimit ----------
+        if type(write_data) == 'int'
+          print(self.DISPLAY_NAME, "Received AbsMinCoolSetpointLimit =", write_data)
+          self.shadow_abs_min_cool_setpoint_limit = write_data
+
+          formatedForTuya /= 10
+          print(self.DISPLAY_NAME, " -> converted to set temperature lower limit =", formatedForTuya)
+          var command = "TuyaSend2 " + self.dpid_filter[5] + "," + str(formatedForTuya)
+          tasmota.cmd(command)
+
+          self.valueChanged = number(self.dpid_filter[5])
+          self.update_shadow()
+          return true
+        end
+      elif attribute == 0x0006          # ---------- AbsMaxCool­Set­pointLimit ----------
+        if type(write_data) == 'int'
+          print(self.DISPLAY_NAME, "Received AbsMaxCoolSetpointLimit =", write_data)
+          self.shadow_abs_max_cool_setpoint_limit = write_data
+
+          formatedForTuya /= 10
+          print(self.DISPLAY_NAME, " -> converted to set temperature upper limit =", formatedForTuya)
+          var command = "TuyaSend2 " + self.dpid_filter[4] + "," + str(formatedForTuya)
+          tasmota.cmd(command)
+
+          self.valueChanged = number(self.dpid_filter[4])
+          self.update_shadow()
+          return true
+        end
+      elif attribute == 0x0011          # ---------- Occu­piedCoolingSet­point ----------
         if type(write_data) == 'int'
           print(self.DISPLAY_NAME, "Received OccupiedCoolingSetpoint =", write_data)
           self.shadow_target_temp_cool = write_data
@@ -309,6 +408,62 @@ class Matter_Plugin_Thermostat_Tuya : Matter_Plugin_Thermostat
             tasmota.cmd(command)
           end
           self.valueChanged = number(self.dpid_filter[3])
+          self.update_shadow()
+          return true
+        end
+      elif attribute == 0x0015          # ---------- MinHeatSetpointLimit ----------
+        if type(write_data) == 'int'
+          print(self.DISPLAY_NAME, "Received MinHeatSetpointLimit =", write_data)
+          self.shadow_min_heat_setpoint_limit = write_data
+
+          formatedForTuya /= 10
+          print(self.DISPLAY_NAME, " -> converted to set temperature lower limit =", formatedForTuya)
+          var command = "TuyaSend2 " + self.dpid_filter[5] + "," + str(formatedForTuya)
+          tasmota.cmd(command)
+
+          self.valueChanged = number(self.dpid_filter[5])
+          self.update_shadow()
+          return true
+        end
+      elif attribute == 0x0016          # ---------- MaxHeat­Set­pointLimit ----------
+        if type(write_data) == 'int'
+          print(self.DISPLAY_NAME, "Received MaxHeatSetpointLimit =", write_data)
+          self.shadow_max_heat_setpoint_limit = write_data
+
+          formatedForTuya /= 10
+          print(self.DISPLAY_NAME, " -> converted to set temperature upper limit =", formatedForTuya)
+          var command = "TuyaSend2 " + self.dpid_filter[4] + "," + str(formatedForTuya)
+          tasmota.cmd(command)
+
+          self.valueChanged = number(self.dpid_filter[4])
+          self.update_shadow()
+          return true
+        end
+      elif attribute == 0x0017          # ---------- MinCoolSet­pointLimit ----------
+        if type(write_data) == 'int'
+          print(self.DISPLAY_NAME, "Received MinCoolSetpointLimit =", write_data)
+          self.shadow_min_cool_setpoint_limit = write_data
+
+          formatedForTuya /= 10
+          print(self.DISPLAY_NAME, " -> converted to set temperature lower limit =", formatedForTuya)
+          var command = "TuyaSend2 " + self.dpid_filter[5] + "," + str(formatedForTuya)
+          tasmota.cmd(command)
+
+          self.valueChanged = number(self.dpid_filter[5])
+          self.update_shadow()
+          return true
+        end
+      elif attribute == 0x0018          # ---------- MaxCool­Set­pointLimit ----------
+        if type(write_data) == 'int'
+          print(self.DISPLAY_NAME, "Received MaxCoolSetpointLimit =", write_data)
+          self.shadow_max_cool_setpoint_limit = write_data
+
+          formatedForTuya /= 10
+          print(self.DISPLAY_NAME, " -> converted to set temperature upper limit =", formatedForTuya)
+          var command = "TuyaSend2 " + self.dpid_filter[4] + "," + str(formatedForTuya)
+          tasmota.cmd(command)
+
+          self.valueChanged = number(self.dpid_filter[4])
           self.update_shadow()
           return true
         end

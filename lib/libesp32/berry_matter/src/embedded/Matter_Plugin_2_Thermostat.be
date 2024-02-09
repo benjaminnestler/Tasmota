@@ -51,11 +51,12 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
   var shadow_target_temp_heat                       # Last known OccupiedHeat­ingSet­point (0x0012)
   var shadow_min_heat_setpoint_limit                # Last known MinHeat­Set­pointLimit (0x0015)
   var shadow_max_heat_setpoint_limit                # Last known MaxHeat­Set­pointLimit (0x0016)
-  var shadow_min_cool_setpoint_limit                # Last known MinHeat­Set­pointLimit (0x0017)
-  var shadow_max_cool_setpoint_limit                # Last known MaxHeat­Set­pointLimit (0x0018)
+  var shadow_min_cool_setpoint_limit                # Last known MinCoolSet­pointLimit (0x0017)
+  var shadow_max_cool_setpoint_limit                # Last known MaxCool­Set­pointLimit (0x0018)
   var shadow_control_sequence                       # Last known ControlSe­quenceOf­Operation (0x001B)
   var shadow_system_mode                            # Last knwon System­Mode (0x001C)
   var shadow_thermostat_running_mode                # Last known Ther­mosta­tRunning­Mode (0x001E)
+  var shadow_feature_map                            # Last known FeatureMap (0xFFFC)
   
   # Cluster 0x204 - Thermostat User Interface Configuration
   var shadow_temperature_display_mode               # Last known Tempera­tureDis­playMode (0x0000)
@@ -69,6 +70,8 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
     super(self).init(device, endpoint, arguments)
     
     # Init Cluster 0x201 attributes
+    self.shadow_feature_map = 0x01                  # Heating only
+    
     self.shadow_current_temperature = nil           # default = null
     
     self.shadow_abs_min_heat_setpoint_limit = 700   # default = 7°C
@@ -149,6 +152,30 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
         else
           return tlv_solo.set(TLV.NULL, nil)
         end
+      elif attribute == 0x0015              #  ---------- MinHeat­Set­pointLimit / i16 (*100) ----------
+        if self.shadow_min_heat_setpoint_limit != nil
+          return tlv_solo.set(TLV.I2, self.shadow_min_heat_setpoint_limit)
+        else
+          return tlv_solo.set(TLV.NULL, nil)
+        end
+      elif attribute == 0x0016              #  ---------- MaxHeat­Set­pointLimit / i16 (*100) ----------
+        if self.shadow_max_heat_setpoint_limit != nil
+          return tlv_solo.set(TLV.I2, self.shadow_max_heat_setpoint_limit)
+        else
+          return tlv_solo.set(TLV.NULL, nil)
+        end
+      elif attribute == 0x0017              #  ---------- MinCool­Set­pointLimit / i16 (*100) ----------
+        if self.shadow_min_cool_setpoint_limit != nil
+          return tlv_solo.set(TLV.I2, self.shadow_min_cool_setpoint_limit)
+        else
+          return tlv_solo.set(TLV.NULL, nil)
+        end
+      elif attribute == 0x0018              #  ---------- MaxCool­Set­pointLimit / i16 (*100) ----------
+        if self.shadow_max_cool_setpoint_limit != nil
+          return tlv_solo.set(TLV.I2, self.shadow_max_cool_setpoint_limit)
+        else
+          return tlv_solo.set(TLV.NULL, nil)
+        end
       elif attribute == 0x001B              # ---------- ControlSe­quenceOf­Operation ----------
         if self.shadow_control_sequence != nil
           return tlv_solo.set(TLV.U1, self.shadow_control_sequence)
@@ -169,7 +196,11 @@ class Matter_Plugin_Thermostat : Matter_Plugin_Device
         end
       # ---------------- Feature Map and ClusterRevision ---------------- #
       elif attribute == 0xFFFC              #  ---------- FeatureMap / map32 ----------
-        return tlv_solo.set(TLV.U4, 0x03)   # 3 = HEAT, COOL
+        if self.shadow_feature_map != nil
+          return tlv_solo.set(TLV.U4, self.shadow_feature_map)
+        else
+          return tlv_solo.set(TLV.NULL, nil)
+        end
       elif attribute == 0xFFFD              #  ---------- ClusterRevision / u2 ----------
         return tlv_solo.set(TLV.U4, 6)      # 6 = See matter 1.1 spec
       end
