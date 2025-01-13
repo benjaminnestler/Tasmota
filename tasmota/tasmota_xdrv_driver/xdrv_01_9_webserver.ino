@@ -413,7 +413,7 @@ const char HTTP_FORM_RST_UPG[] PROGMEM =
     "this.form.action+=\"&ftype=\";"
     "this.form.action+=document.getElementById(\"firmwareType\").value;"
     "this.form.submit();'"
-    ">" D_START " %s</button></form>"
+  ">%s</button></form>"
   "</fieldset>"
   "</div>"
   "<div id='f2' style='display:none;text-align:center;'><b>" D_UPLOAD_STARTED "...</b></div>";
@@ -431,7 +431,7 @@ const char HTTP_FORM_RST_UPG_FCT[] PROGMEM =              // ESP32 safeboot part
     "this.form.action+=\"&ftype=\";"
     "this.form.action+=document.getElementById(\"firmwareType\").value;"
     "return upl(this);'"
-  ">" D_START " %s</button></form>"
+  ">%s</button></form>"
   "</fieldset>"
   "</div>"
   "<div id='f3' style='display:none;text-align:center;'><b>" D_UPLOAD_FACTORY "...</b></div>"
