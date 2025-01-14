@@ -1741,10 +1741,10 @@ void TuyaSerialInput(void)
       Tuya.cmd_checksum += serial_in_byte;
       if (Tuya.byte_counter == 6) { 
         // Get length of data, max buffer is 256 bytes, so only taking into account lowest byte of length
-        Tuya.data_len = serial_in_byte + 6;
+        Tuya.data_len = serial_in_byte;
       }
     }
-    else if (Tuya.byte_counter == Tuya.data_len) {
+    else if (Tuya.byte_counter == (Tuya.data_len + 6)) {
       Tuya.buffer[Tuya.byte_counter++] = serial_in_byte;
       if (Tuya.cmd_checksum == serial_in_byte) { // Compare checksum and process packet
         AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter);
