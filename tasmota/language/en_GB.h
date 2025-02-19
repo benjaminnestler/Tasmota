@@ -276,6 +276,11 @@
 #define D_CONFIGURATION "Configuration"
 #define D_INFORMATION "Information"
 #define D_FIRMWARE_UPGRADE "Firmware Upgrade"
+#define D_FIRMWARE_UPGRADE_ATTENTION_BANNER "This device has a self-compiled ‘Tasmota’ firmware.<br> \
+                                             A manual OTA (Over the air update) to a different<br> \
+                                             ‘Tasmota’ firmware, disables the OTA function<br> \
+                                             for main part of the system and therefore<br> \
+                                             the main application (climate control) functions!"
 #define D_MANAGEMENT "Tools"
 #define D_GPIO_VIEWER "GPIO Viewer"
 #define D_CONSOLE "Console"

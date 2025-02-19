@@ -273,6 +273,9 @@ const char HTTP_HEAD_STYLE3[] PROGMEM =
   "<h3>%s</h3>"    // Module name
   "<h2>%s</h2>";   // Device name
 
+const char HTTP_RED_BANNER[] PROGMEM =
+  "<p><div style='text-align: center;font-family: Arial;font-size: 16px;font-style: normal;font-weight: bold;color: #000000;background-color: #ff2600;'>%s</div></p>";
+
 const char HTTP_MENU_HEAD[] PROGMEM =
   "<div style='padding:0px 5px;text-align:center;'><h3><hr/>%s<hr/></h3></div>";
 
@@ -3156,6 +3159,12 @@ void HandleUpgradeFirmware(void) {
   WSContentStart_P(PSTR(D_FIRMWARE_UPGRADE));
   WSContentSendStyle();
   WSContentSend_P(HTTP_MENU_HEAD, D_FIRMWARE_UPGRADE);
+
+  /* 250114, BNE, Add a red warning banner to warn users about Tasmota Firmware Updates and 
+     the OCS backend restrictions and the tuya mcu upgrade process, which will only be usable
+     with this self compiled version. 
+  */
+  WSContentSend_P(HTTP_RED_BANNER, D_FIRMWARE_UPGRADE_ATTENTION_BANNER);
 
   WSContentSend_P(HTTP_FORM_UPG, SettingsTextEscaped(SET_OTAURL).c_str());
 #ifdef ESP32
