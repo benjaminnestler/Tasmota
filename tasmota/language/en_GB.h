@@ -274,10 +274,13 @@
 #define D_DEVICE_WILL_RESTART "Device will restart in a few seconds"
 #define D_BUTTON_TOGGLE "Toggle"
 #define D_CONFIGURATION "Configuration"
+#define D_CONFIGURATION_ATTENTION_BANNER "This device has a self-compiled ‘Tasmota’ firmware.<br> \
+                                          Changing the configuration can affect the functionality<br>\
+                                          with the App."
 #define D_INFORMATION "Information"
 #define D_FIRMWARE_UPGRADE "Firmware Upgrade"
 #define D_FIRMWARE_UPGRADE_ATTENTION_BANNER "This device has a self-compiled ‘Tasmota’ firmware.<br> \
-                                             A manual OTA (Over the air update) to a different<br> \
+                                             A manual OTA (Over the air) update to a different<br> \
                                              ‘Tasmota’ firmware, disables the OTA function<br> \
                                              for main part of the system and therefore<br> \
                                              the main application (climate control) functions!"

@@ -1997,6 +1997,13 @@ void HandleConfiguration(void) {
   WSContentSendStyle();
   WSContentSend_P(HTTP_MENU_HEAD, D_CONFIGURATION);
 
+  /** 250114, BNE, Add a red warning banner to warn users about configuration changings can lead to 
+   * App errors.
+   * For example: changing the MQTT configuration (clou connection loss) or 
+   * the Device Name configuration (Hotspot name adapted --> claiming issues with the App).
+  */
+  WSContentSend_P(HTTP_RED_BANNER, D_CONFIGURATION_ATTENTION_BANNER);
+
   WSContentButton(BUTTON_MODULE);
   WSContentButton(BUTTON_WIFI);
 
