@@ -1392,6 +1392,7 @@ void TuyaHandleProductInfoPacket(void) {
       }
       else {
         AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: successful to version: %s"), receivedVersion);
+        success = true;
       }
     }
     TuyaCleanupMcuUpgradeData(success);
