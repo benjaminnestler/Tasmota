@@ -2127,6 +2127,7 @@ bool Xdrv16(uint32_t function) {
       case FUNC_WEB_ADD_HANDLER:
         WebServer_on(PSTR("/" WEB_HANDLE_TUYA_MCU_OTA), HandleTuyaOTAWebUploadProgress);
         break;
+#endif  // FIRMWARE_MINIMAL
 #endif  // USE_TUYA_MCU_UPGRADE
 #endif  // USE_WEBSERVER
       case FUNC_ACTIVE:
