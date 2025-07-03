@@ -154,7 +154,7 @@ const uint8_t TuyaExcludeCMDsFromMQTT[] PROGMEM = { // don't publish this receiv
 #undef TUYA_PACKET_QUEUE_SIZE
 #endif
 
-#define TUYA_PACKET_QUEUE_SIZE 32
+#define TUYA_PACKET_QUEUE_SIZE 48
 
 typedef struct TuyaPacket_s {
   uint8_t data[TUYA_BUFFER_SIZE];
@@ -191,7 +191,22 @@ static bool TuyaPacketQueue_IsFull(void) {
 }
 
 static bool TuyaPacketQueue_Push(const uint8_t* data, uint16_t len) {
+  // Check if the queue is full
   if (TuyaPacketQueue_IsFull()) return false;
+
+  // Check if the last packet in the queue is identical to the new one
+  if (!TuyaPacketQueue_IsEmpty()) {
+    // Get index of last packet (handle wrap-around)
+    uint8_t last_idx = (tuyaPacketQueue.head == 0) ? (TUYA_PACKET_QUEUE_SIZE - 1) : (tuyaPacketQueue.head - 1);
+    TuyaPacket_t* last_pkt = &tuyaPacketQueue.packets[last_idx];
+    if ((last_pkt->len == len) && (0 == memcmp(last_pkt->data, data, len))) {
+      // Identical packet, do not push
+      AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: drop same package"));
+      return true;
+    }
+  }
+
+  // Copy new packet into queue
   memcpy(tuyaPacketQueue.packets[tuyaPacketQueue.head].data, data, len);
   tuyaPacketQueue.packets[tuyaPacketQueue.head].len = len;
   tuyaPacketQueue.head = (tuyaPacketQueue.head + 1) % TUYA_PACKET_QUEUE_SIZE;
@@ -1776,6 +1791,12 @@ static void TuyaProcessMessage(const uint8_t* packet, uint16_t packet_len)
   }
 }
 
+static void _tuya_reset_byte_counter_and_yield (void) 
+{
+  Tuya.byte_counter = 0;
+  yield();
+}
+
 void TuyaSerialInput(void)
 {
   /*       /-------------------------------- header 55
@@ -1793,7 +1814,6 @@ void TuyaSerialInput(void)
   static unsigned long time_last_byte_received = 0;
 
   while (TuyaSerial->available()) {
-    yield();
     uint8_t serial_in_byte = TuyaSerial->read();
     time_last_byte_received = millis();
     if (Tuya.byte_counter == 0) {
@@ -1806,7 +1826,8 @@ void TuyaSerialInput(void)
         Tuya.buffer[Tuya.byte_counter++] = 0xAA;
         Tuya.cmd_checksum = 0xFF;
       } else {
-        Tuya.byte_counter = 0; // if not received 0xAA right after the 0x55, reset the state machine
+        //Tuya.byte_counter = 0; // if not received 0xAA right after the 0x55, reset the state machine
+        _tuya_reset_byte_counter_and_yield();
         AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: 0x55 without 0xAA - resync"));
       }
     }
@@ -1820,29 +1841,33 @@ void TuyaSerialInput(void)
     }
     else if (Tuya.byte_counter == (Tuya.data_len + 6)) {
       Tuya.buffer[Tuya.byte_counter++] = serial_in_byte;
+      AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter);
       if (Tuya.cmd_checksum == serial_in_byte) { // Compare checksum and process packet
-        AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter);
         // Instead of calling TuyaProcessCommand directly, push to queue
         if (!TuyaPacketQueue_Push((const uint8_t *) Tuya.buffer, Tuya.byte_counter)) {
           AddLog(LOG_LEVEL_ERROR, PSTR("TYA: Packet queue full, dropping packet"));
         }
       } else {
-        AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: checksum error: 0x%02X instead of 0x%02X"), serial_in_byte, Tuya.cmd_checksum);
+        AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter);
       }
-      Tuya.byte_counter = 0;
+      //Tuya.byte_counter = 0;
+      _tuya_reset_byte_counter_and_yield(); // reset the state machine
     }
     else if (Tuya.byte_counter < TUYA_BUFFER_SIZE -1) {  // add char to string if it still fits
       Tuya.buffer[Tuya.byte_counter++] = serial_in_byte;
       Tuya.cmd_checksum += serial_in_byte;
     } 
     else { // buffer overflow, reset the state machine
-      Tuya.byte_counter = 0;
+      //Tuya.byte_counter = 0;
+      _tuya_reset_byte_counter_and_yield();
     }
   }
   // reset the state machine if no bytes received since a long time
   if (Tuya.byte_counter > 0 && (millis() - time_last_byte_received) > TUYA_CMD_TIMEOUT) {
-     Tuya.byte_counter = 0;
-     AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: serial receive timeout"));
+     AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: serial receive timeout - dump buffer content"));
+     AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter); 
+     //Tuya.byte_counter = 0;
+     _tuya_reset_byte_counter_and_yield();
    }
 }
 
