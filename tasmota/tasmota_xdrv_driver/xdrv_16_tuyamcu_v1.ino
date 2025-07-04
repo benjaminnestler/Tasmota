@@ -1848,7 +1848,7 @@ void TuyaSerialInput(void)
           AddLog(LOG_LEVEL_ERROR, PSTR("TYA: Packet queue full, dropping packet"));
         }
       } else {
-        AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter);
+        AddLog(LOG_LEVEL_ERROR, PSTR("TYA: Packet checksum mismatch, expected 0x%02X, got 0x%02X"), Tuya.cmd_checksum, serial_in_byte);
       }
       //Tuya.byte_counter = 0;
       _tuya_reset_byte_counter_and_yield(); // reset the state machine
