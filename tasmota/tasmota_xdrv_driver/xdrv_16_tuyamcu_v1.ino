@@ -1800,43 +1800,51 @@ static void _tuya_reset_byte_counter_and_yield (void)
 void TuyaSerialInput(void)
 {
   /*       /-------------------------------- header 55
-   *       |  /----------------------------- header AA
-   *       |  |  /-------------------------- version, always 00
-   *       |  |  |  /----------------------- command byte
-   *       |  |  |  |  /--+----------------- data length in bytes, big endian (high then low)
-   *       |  |  |  |  |  |  /-+-+-+-+------ data bytes
-   *       |  |  |  |  |  |  | | | | |  /--- checksum (sum of all bytes except checksum)
-   *      55 AA 00 cc lh ll dd .... dd xx
-   *       0  1  2  3  4  5  6 ....          index in Tuya buffer
-   *       0  1  2  2  2  2  3 3 3 3 3       Tuya.cmd_status
-   */
+  *       |  /----------------------------- header AA
+  *       |  |  /-------------------------- version, always 00
+  *       |  |  |  /----------------------- command byte
+  *       |  |  |  |  /--+----------------- data length in bytes, big endian (high then low)
+  *       |  |  |  |  |  |  /-+-+-+-+------ data bytes
+  *       |  |  |  |  |  |  | | | | |  /--- checksum (sum of all bytes except checksum)
+  *      55 AA 00 cc lh ll dd .... dd xx
+  *       0  1  2  3  4  5  6 ....          index in Tuya buffer
+  *       0  1  2  2  2  2  3 3 3 3 3       Tuya.cmd_status
+  */
 
   static unsigned long time_last_byte_received = 0;
+  static bool waiting_for_header = true;
 
   while (TuyaSerial->available()) {
     uint8_t serial_in_byte = TuyaSerial->read();
+    //AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("TYA: RX 0x%02X"), serial_in_byte);
+    yield();
     time_last_byte_received = millis();
-    if (Tuya.byte_counter == 0) {
-      if (serial_in_byte == 0x55) {            // Start TUYA Packet
-        Tuya.buffer[Tuya.byte_counter++] = 0x55;
+
+    if (waiting_for_header) {
+      if (serial_in_byte == 0x55) {
+        Tuya.buffer[0] = 0x55;
+        Tuya.byte_counter = 1;
+        waiting_for_header = false;
       }
+      continue;
     }
-    else if (Tuya.byte_counter == 1) {
-      if (serial_in_byte == 0xAA) { // Only packets with header 0x55AA are valid
+
+    if (Tuya.byte_counter == 1) {
+      if (serial_in_byte == 0xAA) {
         Tuya.buffer[Tuya.byte_counter++] = 0xAA;
         Tuya.cmd_checksum = 0xFF;
       } else {
-        //Tuya.byte_counter = 0; // if not received 0xAA right after the 0x55, reset the state machine
-        _tuya_reset_byte_counter_and_yield();
-        AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: 0x55 without 0xAA - resync"));
+        // Not a valid header, resync
+        Tuya.byte_counter = 0;
+        waiting_for_header = true;
+        continue;
       }
     }
     else if (Tuya.byte_counter < 6) {
       Tuya.buffer[Tuya.byte_counter++] = serial_in_byte;
       Tuya.cmd_checksum += serial_in_byte;
-      if (Tuya.byte_counter == 6) { 
-        // Get length of data, max buffer is 256 bytes, so only taking into account lowest byte of length
-        Tuya.data_len = serial_in_byte;
+      if (Tuya.byte_counter == 6) {
+        Tuya.data_len = Tuya.buffer[4] << 8 | Tuya.buffer[5];
       }
     }
     else if (Tuya.byte_counter == (Tuya.data_len + 6)) {
@@ -1850,25 +1858,26 @@ void TuyaSerialInput(void)
       } else {
         AddLog(LOG_LEVEL_ERROR, PSTR("TYA: Packet checksum mismatch, expected 0x%02X, got 0x%02X"), Tuya.cmd_checksum, serial_in_byte);
       }
-      //Tuya.byte_counter = 0;
-      _tuya_reset_byte_counter_and_yield(); // reset the state machine
+      Tuya.byte_counter = 0;
+      waiting_for_header = true;
     }
-    else if (Tuya.byte_counter < TUYA_BUFFER_SIZE -1) {  // add char to string if it still fits
+    else if (Tuya.byte_counter < TUYA_BUFFER_SIZE - 1) {
       Tuya.buffer[Tuya.byte_counter++] = serial_in_byte;
       Tuya.cmd_checksum += serial_in_byte;
-    } 
-    else { // buffer overflow, reset the state machine
-      //Tuya.byte_counter = 0;
-      _tuya_reset_byte_counter_and_yield();
+    } else {
+      // Buffer overflow, resync
+      Tuya.byte_counter = 0;
+      waiting_for_header = true;
     }
   }
-  // reset the state machine if no bytes received since a long time
+
+  // Timeout: reset state machine and resync
   if (Tuya.byte_counter > 0 && (millis() - time_last_byte_received) > TUYA_CMD_TIMEOUT) {
-     AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: serial receive timeout - dump buffer content"));
-     AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter); 
-     //Tuya.byte_counter = 0;
-     _tuya_reset_byte_counter_and_yield();
-   }
+    AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: serial receive timeout - dump buffer content"));
+    AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter);
+    Tuya.byte_counter = 0;
+    waiting_for_header = true;
+  }
 }
 
 bool TuyaButtonPressed(void) {
@@ -2162,16 +2171,23 @@ bool Xdrv16(uint32_t function) {
           else
             Tuya.time_last_cmd = 0;
         }
-        if (TuyaSerial && Tuya.wifi_state != TuyaGetTuyaWifiState()) { TuyaSetWifiLed(); }
+        if (TuyaSerial && Tuya.wifi_state != TuyaGetTuyaWifiState() && !TuyaSerial->available() && Tuya.heartbeat_timer) { TuyaSetWifiLed(); }
         if (!Tuya.low_power_mode) {
           Tuya.heartbeat_timer++;
           if (Tuya.heartbeat_timer > 10) {
-            Tuya.heartbeat_timer = 0;
-            TuyaSendCmd(TUYA_CMD_HEARTBEAT);
+            if (!TuyaSerial->available()){
+              Tuya.heartbeat_timer = 0;
+              TuyaSendCmd(TUYA_CMD_HEARTBEAT);
+            }
+            else {
+              AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: RX data while waiting for heartbeat"));
+            }
           }
 #ifdef USE_TUYA_TIME
           if (!(TasmotaGlobal.uptime % 60)) {
-            TuyaSetTime();
+            if (Tuya.heartbeat_timer && !TuyaSerial->available()){
+              TuyaSetTime();
+            }
           }
 #endif  //USE_TUYA_TIME
         } else {
@@ -2180,7 +2196,7 @@ bool Xdrv16(uint32_t function) {
         if (Tuya.ignore_topic_timeout < millis()) { Tuya.SuspendTopic = false; }
 #ifdef USE_TUYA_MCU_UPGRADE
         //avoid collision of heartbeat responses
-        if (Tuya.heartbeat_timer && Tuya.mcu_upg.response_timeout < millis()){
+        if (Tuya.heartbeat_timer && Tuya.mcu_upg.response_timeout < millis() && !TuyaSerial->available()){
           if (Tuya.mcu_upg.flags.request_init_upgd){
             //clean OTA data because missing response to initial upgrade packet
             AddLog(LOG_LEVEL_ERROR, PSTR("TYA: MCU-Upgrade: missing initial upgrade packet response. This is an indication that the MCU firmware has not implemented the firmware update process."));
