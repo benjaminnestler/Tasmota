@@ -104,7 +104,8 @@ struct TUYA {
 #endif
 } Tuya;
 
-#define TUYA_CMD_TIMEOUT        200
+#define TUYA_RECEIVE_TIMEOUT        250
+#define TUYA_SEND_TIMEOUT           1000
 
 #define D_JSON_TUYA_MCU_RECEIVED "TuyaReceived"
 
@@ -1694,7 +1695,7 @@ void TuyaInit(void) {
 static void TuyaProcessMessage(const uint8_t* packet, uint16_t packet_len)
 {
   // Parse packet header
-  uint16_t len = packet[4] << 8 | packet[5];   // Data length (excluding header)
+  uint16_t len = packet[4] << 8 | packet[5];   // Data length (excluding header and checksum)
   uint8_t cmd = packet[3];                     // Command byte
   char hex_char[(TUYA_BUFFER_SIZE * 2) + 2];
 
@@ -1853,10 +1854,10 @@ void TuyaSerialInput(void)
       if (Tuya.cmd_checksum == serial_in_byte) { // Compare checksum and process packet
         // Instead of calling TuyaProcessCommand directly, push to queue
         if (!TuyaPacketQueue_Push((const uint8_t *) Tuya.buffer, Tuya.byte_counter)) {
-          AddLog(LOG_LEVEL_ERROR, PSTR("TYA: Packet queue full, dropping packet"));
+          AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("TYA: Packet queue full, dropping packet"));
         }
       } else {
-        AddLog(LOG_LEVEL_ERROR, PSTR("TYA: Packet checksum mismatch, expected 0x%02X, got 0x%02X"), Tuya.cmd_checksum, serial_in_byte);
+        AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("TYA: Packet checksum mismatch, expected 0x%02X, got 0x%02X"), Tuya.cmd_checksum, serial_in_byte);
       }
       Tuya.byte_counter = 0;
       waiting_for_header = true;
@@ -1872,7 +1873,7 @@ void TuyaSerialInput(void)
   }
 
   // Timeout: reset state machine and resync
-  if (Tuya.byte_counter > 0 && (millis() - time_last_byte_received) > TUYA_CMD_TIMEOUT) {
+  if (Tuya.byte_counter > 0 && (millis() - time_last_byte_received) > TUYA_RECEIVE_TIMEOUT) {
     AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: serial receive timeout - dump buffer content"));
     AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter);
     Tuya.byte_counter = 0;
@@ -2166,7 +2167,7 @@ bool Xdrv16(uint32_t function) {
         break;
       case FUNC_EVERY_SECOND:
         if (Tuya.time_last_cmd) {
-          if ((millis()-Tuya.time_last_cmd) < TUYA_CMD_TIMEOUT)
+          if ((millis()-Tuya.time_last_cmd) < TUYA_SEND_TIMEOUT)
             break; // don't send anything if we are already waiting for an answer
           else
             Tuya.time_last_cmd = 0;
@@ -2180,7 +2181,7 @@ bool Xdrv16(uint32_t function) {
               TuyaSendCmd(TUYA_CMD_HEARTBEAT);
             }
             else {
-              AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: RX data while waiting for heartbeat"));
+              AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("TYA: RX data while waiting for transmit heartbeat"));
             }
           }
 #ifdef USE_TUYA_TIME
