@@ -156,7 +156,7 @@ const uint8_t TuyaExcludeCMDsFromMQTT[] PROGMEM = { // don't publish this receiv
 #endif
 
 #define TUYA_PACKET_QUEUE_SIZE 48
-#define TUYA_PACKET_SEND_QUEUE_SIZE 10
+#define TUYA_PACKET_SEND_QUEUE_SIZE 4
 
 typedef struct TuyaPacket_s {
   uint8_t data[TUYA_BUFFER_SIZE + 16];
