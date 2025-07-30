@@ -105,7 +105,7 @@ struct TUYA {
 } Tuya;
 
 #define TUYA_RECEIVE_TIMEOUT        250
-#define TUYA_SEND_TIMEOUT           1000
+#define TUYA_SEND_TIMEOUT           250
 
 #define D_JSON_TUYA_MCU_RECEIVED "TuyaReceived"
 
@@ -156,9 +156,10 @@ const uint8_t TuyaExcludeCMDsFromMQTT[] PROGMEM = { // don't publish this receiv
 #endif
 
 #define TUYA_PACKET_QUEUE_SIZE 48
+#define TUYA_PACKET_SEND_QUEUE_SIZE 4
 
 typedef struct TuyaPacket_s {
-  uint8_t data[TUYA_BUFFER_SIZE];
+  uint8_t data[TUYA_BUFFER_SIZE + 16];
   uint16_t len;
 } TuyaPacket_t;
 
@@ -168,7 +169,15 @@ typedef struct TuyaPacketQueue_s {
   volatile uint8_t tail;
 } TuyaPacketQueue_t;
 
+
+typedef struct TuyaPacketSendQueue_s {
+  TuyaPacket_t packets[TUYA_PACKET_SEND_QUEUE_SIZE];
+  volatile uint8_t head;
+  volatile uint8_t tail;
+} TuyaPacketSendQueue_t;
+
 TuyaPacketQueue_t tuyaPacketQueue = { .head = 0, .tail = 0 };
+TuyaPacketSendQueue_t tuyaPacketSendQueue = { .head = 0, .tail = 0 };
 
 static bool TuyaPacketQueue_IsEmpty(void);
 static bool TuyaPacketQueue_IsFull(void);
@@ -179,6 +188,11 @@ static void TuyaNormalPowerModePacketProcess(const uint8_t* packet, uint16_t pac
 static void TuyaLowPowerModePacketProcess(const uint8_t* packet, uint16_t packet_len);
 static void TuyaHandleProductInfoPacket(const uint8_t* packet);
 static void TuyaProcessStatePacket(const uint8_t* packet, uint16_t packet_len);
+
+static bool TuyaPacketSendQueue_IsEmpty(void);
+static bool TuyaPacketSendQueue_IsFull(void);
+static bool TuyaPacketSendQueue_Push(const uint8_t* data, uint16_t len);
+static bool TuyaPacketSendQueue_Pop(TuyaPacket_t* out);
 /*********************************************************************************************\
  * Tuya Packet Queue
 \*********************************************************************************************/
@@ -218,6 +232,32 @@ static bool TuyaPacketQueue_Pop(TuyaPacket_t* out) {
   if (TuyaPacketQueue_IsEmpty()) return false;
   memcpy(out, &tuyaPacketQueue.packets[tuyaPacketQueue.tail], sizeof(TuyaPacket_t));
   tuyaPacketQueue.tail = (tuyaPacketQueue.tail + 1) % TUYA_PACKET_QUEUE_SIZE;
+  return true;
+}
+
+/*********************************************************************************************\
+ * Tuya Packet Send Queue
+\*********************************************************************************************/
+static bool TuyaPacketSendQueue_IsEmpty(void) {
+  return tuyaPacketSendQueue.head == tuyaPacketSendQueue.tail;
+}
+
+static bool TuyaPacketSendQueue_IsFull(void) {
+  return ((tuyaPacketSendQueue.head + 1) % TUYA_PACKET_SEND_QUEUE_SIZE) == tuyaPacketSendQueue.tail;
+}
+
+static bool TuyaPacketSendQueue_Push(const uint8_t* data, uint16_t len) {
+  if (TuyaPacketSendQueue_IsFull()) return false;
+  memcpy(tuyaPacketSendQueue.packets[tuyaPacketSendQueue.head].data, data, len);
+  tuyaPacketSendQueue.packets[tuyaPacketSendQueue.head].len = len;
+  tuyaPacketSendQueue.head = (tuyaPacketSendQueue.head + 1) % TUYA_PACKET_SEND_QUEUE_SIZE;
+  return true;
+}
+
+static bool TuyaPacketSendQueue_Pop(TuyaPacket_t* out) {
+  if (TuyaPacketSendQueue_IsEmpty()) return false;
+  memcpy(out, &tuyaPacketSendQueue.packets[tuyaPacketSendQueue.tail], sizeof(TuyaPacket_t));
+  tuyaPacketSendQueue.tail = (tuyaPacketSendQueue.tail + 1) % TUYA_PACKET_SEND_QUEUE_SIZE;
   return true;
 }
 
@@ -676,6 +716,7 @@ uint8_t TuyaGetDpId(uint8_t fnId) {
   return 0;
 }
 
+#if 0
 void TuyaSendCmd(uint8_t cmd, uint8_t payload[] = nullptr, uint16_t payload_len = 0)
 {
   uint8_t checksum = (0xFF + cmd + (payload_len >> 8) + (payload_len & 0xFF));
@@ -698,6 +739,32 @@ void TuyaSendCmd(uint8_t cmd, uint8_t payload[] = nullptr, uint16_t payload_len 
   snprintf_P(log_data, sizeof(log_data), PSTR("%s%02x\""), log_data, checksum);
   AddLogData(LOG_LEVEL_DEBUG, log_data);
 }
+#else
+void TuyaSendCmd(uint8_t cmd, uint8_t payload[] = nullptr, uint16_t payload_len = 0)
+{
+  uint8_t packet[TUYA_BUFFER_SIZE];
+  uint16_t idx = 0;
+  uint8_t checksum = (0xFF + cmd + (payload_len >> 8) + (payload_len & 0xFF));
+
+  packet[idx++] = 0x55;
+  packet[idx++] = 0xAA;
+  packet[idx++] = 0x00;
+  packet[idx++] = cmd;
+  packet[idx++] = payload_len >> 8;
+  packet[idx++] = payload_len & 0xFF;
+
+  for (uint32_t i = 0; i < payload_len; ++i) {
+    packet[idx++] = payload[i];
+    checksum += payload[i];
+  }
+  packet[idx++] = checksum;
+
+  // Statt direkt zu senden: In die Send-Queue legen
+  if (!TuyaPacketSendQueue_Push(packet, idx)) {
+    AddLog(LOG_LEVEL_ERROR, PSTR("TYA: Send queue full, dropping packet"));
+  }
+}
+#endif
 
 void TuyaSendState(uint8_t id, uint8_t type, uint8_t* value)
 {
@@ -1850,6 +1917,7 @@ void TuyaSerialInput(void)
     }
     else if (Tuya.byte_counter == (Tuya.data_len + 6)) {
       Tuya.buffer[Tuya.byte_counter++] = serial_in_byte;
+      AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("TYA: RX"));
       AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter);
       if (Tuya.cmd_checksum == serial_in_byte) { // Compare checksum and process packet
         // Instead of calling TuyaProcessCommand directly, push to queue
@@ -2146,13 +2214,32 @@ bool Xdrv16(uint32_t function) {
     switch (function) {
       case FUNC_LOOP:
       case FUNC_SLEEP_LOOP:
-        if (TuyaSerial) { TuyaSerialInput(); }
-        // Process queued Tuya packets
+        if (TuyaSerial == nullptr) { 
+          break;
+        }
+        // Process serial input
+        TuyaSerialInput();
+        
         {
           TuyaPacket_t pkt;
+          
+          // Process queued Tuya packets
           while (TuyaPacketQueue_Pop(&pkt)) {
-            yield();
             TuyaProcessMessage(pkt.data, pkt.len);
+            //yield();
+          }
+
+          // Process send queue
+          while (TuyaPacketSendQueue_Pop(&pkt)) {
+            for (uint16_t i = 0; i < pkt.len; ++i) {
+              TuyaSerial->write(pkt.data[i]);
+            }
+            TuyaSerial->flush();
+            Tuya.time_last_cmd = millis() | 1;
+            // Optional: Logging
+            AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("TYA: TX"));
+            AddLogBuffer(LOG_LEVEL_DEBUG, pkt.data, pkt.len);
+            //yield();
           }
         }
         break;
