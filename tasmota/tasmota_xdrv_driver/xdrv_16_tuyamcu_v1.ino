@@ -58,7 +58,7 @@
 #define TUYA_TYPE_STRING       0x03
 #define TUYA_TYPE_ENUM         0x04
 
-#define TUYA_BUFFER_SIZE       256
+#define TUYA_BUFFER_SIZE       (256 + 16)
 
 #include <TasmotaSerial.h>
 
@@ -159,7 +159,7 @@ const uint8_t TuyaExcludeCMDsFromMQTT[] PROGMEM = { // don't publish this receiv
 #define TUYA_PACKET_SEND_QUEUE_SIZE 4
 
 typedef struct TuyaPacket_s {
-  uint8_t data[TUYA_BUFFER_SIZE + 16];
+  uint8_t data[TUYA_BUFFER_SIZE];
   uint16_t len;
 } TuyaPacket_t;
 
