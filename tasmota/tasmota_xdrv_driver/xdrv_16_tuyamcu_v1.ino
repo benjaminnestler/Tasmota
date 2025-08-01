@@ -1071,6 +1071,9 @@ void TuyaMcuUpgradeHandling (void) {
     Tuya.mcu_upg.flags.request_version = 1;
     ResponseAppend_P(PSTR("querying product ID to get current version ..."));
   }
+  else {
+    sendMqttUpdateMsg = false; // No upgrade in progress, send no MQTT messages
+  }
 
   if (sendMqttUpdateMsg) {
     ResponseAppend_P(PSTR("\""));
