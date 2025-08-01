@@ -63,6 +63,8 @@ private:
 
 #ifdef ESP8266
   bool eraseSector (void);
+#elif (defined ESP32)
+  bool deleteFile (void);
 #endif
   bool writeBuffer (void);
   bool readToBuffer (void);

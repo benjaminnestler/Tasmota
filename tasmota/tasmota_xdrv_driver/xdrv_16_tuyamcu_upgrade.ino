@@ -151,6 +151,7 @@ void TuyaUpgBuffer::reset (void) {
   _state = OTA_STATE_RESET;
 #ifdef ESP32
   if (_fname) {
+    deleteFile();
     delete[] _fname;
     _fname = nullptr;
   }
@@ -431,6 +432,19 @@ bool TuyaUpgBuffer::readToBuffer (void) {
   
   ota_file.close();
 
+  return true;
+}
+
+bool TuyaUpgBuffer::deleteFile (void) {
+  if (_fname && ufsp->exists(_fname)) {
+    if (ufsp->remove(_fname)) {
+      AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: MCU-Upgrade: file %s deleted."), _fname);
+      return true;
+    } else {
+      AddLog(LOG_LEVEL_ERROR, PSTR("TYA: MCU-Upgrade: file %s couldn't be deleted."), _fname);
+      return false;
+    }
+  }
   return true;
 }
 #endif
