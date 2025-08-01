@@ -579,11 +579,11 @@ void CmndTuyaUpgrade(void) { // Command to update the tuya mcu
         AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: parameter[%d]: %s"), i, parm[i]);
         i++;
       }
-      const size_t versionStrLen =  strlen(parm[0]) + 3;
+      const size_t versionStrLen =  strlen(parm[0]) + 1;
       Tuya.mcu_upg.new_version.reset(new char[versionStrLen]);
-      strcpy_P(Tuya.mcu_upg.new_version.get() + 1, parm[0]);
-      Tuya.mcu_upg.new_version[0] = '"';
-      Tuya.mcu_upg.new_version[versionStrLen - 2] = '"';
+      strcpy_P(Tuya.mcu_upg.new_version.get(), parm[0]);
+      //Tuya.mcu_upg.new_version[0] = '"';
+      //Tuya.mcu_upg.new_version[versionStrLen - 2] = '"';
       Tuya.mcu_upg.new_version[versionStrLen - 1] = '\0';
 
       AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: version: %s"), Tuya.mcu_upg.new_version.get());
@@ -591,7 +591,7 @@ void CmndTuyaUpgrade(void) { // Command to update the tuya mcu
         if (Tuya.mcu_upg.flash_buffer.init(Tuya.mcu_upg.binary_len, parm[1], parm[2])) {
           if (Tuya.mcu_upg.binary_len == Tuya.mcu_upg.flash_buffer.writeToFlashOrFile(*Tuya.mcu_upg.wifi_client)) {
             if (Tuya.mcu_upg.flash_buffer.isChecksumOk()) {
-              ResponseAppend_P(PSTR("Starting MCU-Upgrade..."));
+              ResponseAppend_P(PSTR("Starting MCU-Upgrade to version %s..."), Tuya.mcu_upg.new_version.get());
               TuyaSendInitiateUpgrade();
             } else {
               ResponseAppend_P(PSTR("Error: Verification of Checksum failed!"));
@@ -900,6 +900,9 @@ void TuyaSendInitiateUpgrade() {
 }
 
 void TuyaSendUpgradePackage(bool next = false) {
+  static uint32_t lastProcessPercent = 0;
+  bool sendMqttUpdateMsg = true;
+  Response_P(PSTR("{\"TuyaUpgrade\":{\"Result\":\""));  // Builds TuyaUpgrade
   if (Tuya.mcu_upg.flash_buffer.hasMoreData() && 3 > Tuya.mcu_upg.retry_cnt) {
     if (next) {
       if (!Tuya.mcu_upg.flash_buffer.readNextPacket()) {
@@ -923,6 +926,16 @@ void TuyaSendUpgradePackage(bool next = false) {
       Tuya.mcu_upg.retry_cnt++;
       
       AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: MCU-Upgrade: OTA chunk %d bytes transfering @ offset = 0x%lx."), (payload_len - 4), offset);
+      
+      // Add to response for MQTT
+      uint32_t processPercent = ((offset * 100) / Tuya.mcu_upg.binary_len);
+      if (!(processPercent % 10) && (processPercent != lastProcessPercent)) { // Only log one time, every 10%
+        ResponseAppend_P(PSTR("OTA process %d%%"), processPercent);
+        lastProcessPercent = processPercent;
+      }
+      else {
+        sendMqttUpdateMsg = false; // Do not send MQTT message for every chunk
+      }
     } else {
       uint32_t bytesTransferred = Tuya.mcu_upg.flash_buffer.bytesRead();
       payload_buffer[0] = bytesTransferred >> 24;
@@ -934,16 +947,26 @@ void TuyaSendUpgradePackage(bool next = false) {
       Tuya.mcu_upg.flags.trigger_version = 1;
       Tuya.mcu_upg.response_timeout = millis() + 30000;       //This timeout is necessary to let the MCU flash the OTA file in its internal memory
 
+      lastProcessPercent = 0; // Reset lastProcessPercent to avoid sending MQTT message for the last package
+
       AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: MCU-Upgrade: all %d bytes are transfered, send last package with total number of transfered bytes."), bytesTransferred);
+      ResponseAppend_P(PSTR("OTA process 100%% all %d bytes are transfered."), bytesTransferred);
     }
     TuyaSendCmd(TUYA_CMD_UPGRADE_PACKAGE, payload_buffer, payload_len);
   } else if (3 <= Tuya.mcu_upg.retry_cnt) { // ERROR
     AddLog(LOG_LEVEL_ERROR, PSTR("TYA: MCU-Upgrade: OTA chunk transfer failed because maximum retry-count reached."));
+    ResponseAppend_P(PSTR("OTA chunk transfer failed because maximum retry-count reached."));
     TuyaCleanupMcuUpgradeData(false);
   } else { // MCU-upgrade finished with response to the last package.
-      AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: OTA chunk transfer finished."));
-      Tuya.mcu_upg.flags.trigger_version = 1;
-      Tuya.mcu_upg.response_timeout = millis() + 30000;     //This timeout is necessary to let the MCU flash the OTA file in its internal memory
+    Tuya.mcu_upg.flags.trigger_version = 1;
+    Tuya.mcu_upg.response_timeout = millis() + 30000;     //This timeout is necessary to let the MCU flash the OTA file in its internal memory
+    AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: OTA chunk transfer finished."));
+    ResponseAppend_P(PSTR("OTA chunk transfer finished."));
+  }
+  ResponseAppend_P(PSTR("\""));
+  ResponseJsonEndEnd();
+  if (sendMqttUpdateMsg) {
+    MqttPublishPrefixTopic_P(RESULT_OR_STAT, PSTR(""));
   }
 }
 
@@ -991,7 +1014,7 @@ bool TuyaCreateStreamToMcuBinary(const char* url) {
 }
 
 void TuyaCleanupMcuUpgradeData(bool success) {
-  AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: clean upgrade data."), Tuya.mcu_upg.binary_len);
+  AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: clean upgrade data."));
   if (Tuya.mcu_upg.http_client) {
     Tuya.mcu_upg.http_client->end();
     delete Tuya.mcu_upg.http_client;
@@ -1528,21 +1551,36 @@ static void TuyaHandleProductInfoPacket(const uint8_t* packet) {
         }
         i++;
       }
+
     }
     if (receivedVersion) {
+      // Remove leading and trailing quotes if present
+      size_t len = strlen(receivedVersion);
+      if (len >= 2 && receivedVersion[0] == '"' && receivedVersion[len-1] == '"') {
+        receivedVersion[len-1] = '\0';      // remove trailing quote
+        receivedVersion++;                   // skip leading quote
+        len -= 2;
+      }
+      Response_P(PSTR("{\"TuyaUpgrade\":{\"Result\":\""));  // Builds TuyaUpgrade
       if (nullptr != Tuya.mcu_upg.new_version) {
         if (strcmp_P(Tuya.mcu_upg.new_version.get(), receivedVersion) == 0) {
           AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: successful to version: %s"), receivedVersion);
+          ResponseAppend_P(PSTR("MCU-Upgrade finished successfully to version: %s"), receivedVersion);
           success = true;
         }
         else {
           AddLog(LOG_LEVEL_ERROR, PSTR("TYA: MCU-Upgrade: failed to version: %s"), Tuya.mcu_upg.new_version.get());
+          ResponseAppend_P(PSTR("MCU-Upgrade finished failed from version: %s to version: %s"), receivedVersion, Tuya.mcu_upg.new_version.get());
         }
       }
       else {
         AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: successful to version: %s"), receivedVersion);
+        ResponseAppend_P(PSTR("MCU-Upgrade finished successfully to version: %s"), receivedVersion);
         success = true;
       }
+      ResponseAppend_P(PSTR("\""));
+      ResponseJsonEndEnd();
+      MqttPublishPrefixTopic_P(RESULT_OR_STAT, PSTR(""));
     }
     TuyaCleanupMcuUpgradeData(success);
   }
@@ -1857,12 +1895,6 @@ static void TuyaProcessMessage(const uint8_t* packet, uint16_t packet_len)
   } else {
     TuyaLowPowerModePacketProcess(packet, packet_len);
   }
-}
-
-static void _tuya_reset_byte_counter_and_yield (void) 
-{
-  Tuya.byte_counter = 0;
-  yield();
 }
 
 void TuyaSerialInput(void)
