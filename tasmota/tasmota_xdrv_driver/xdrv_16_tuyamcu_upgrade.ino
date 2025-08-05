@@ -194,7 +194,7 @@ uint32_t TuyaUpgBuffer::writeToFlashOrFile (Stream &data) {
         ++retryCount;
       }
       if (toRead == 0) { // three Timeouts
-        ResponseAppend_P(PSTR("readBytes timed out"));
+        //ResponseAppend_P(PSTR("readBytes timed out"));
         abort();
         return bytesWritten;
       }
