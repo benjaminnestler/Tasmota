@@ -103,7 +103,6 @@ struct MCU_UPGRADE_DATA {
   uint8_t retry_cnt = 0;                  // retry counter if MCU doesn't respond on a message
   uint32_t binary_len = 0;                // size fo the binary
   std::unique_ptr<char[]> new_version;    // expected version string
-  std::unique_ptr<char[]> cur_version;    // current version string
   union {
     uint8_t data;
     struct {
