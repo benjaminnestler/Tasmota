@@ -56,6 +56,7 @@ public:
   uint16_t getCurrentPacketSize (void);
   ota_state_t getState (void);
   void ready (bool ready = false);
+  void deleteAllBinFilesInRoot(void);
 
 private:
   uint32_t remaining (void);
