@@ -446,6 +446,31 @@ bool TuyaUpgBuffer::deleteFile (void) {
   }
   return true;
 }
+
+void TuyaUpgBuffer::deleteAllBinFilesInRoot(void) {
+  File root = ufsp->open("/");
+  if (!root || !root.isDirectory()) {
+    AddLog(LOG_LEVEL_ERROR, PSTR("TYA: MCU-Upgrade: cannot open root directory"));
+    return;
+  }
+
+  File file = root.openNextFile();
+  while (file) {
+    String filename = "/";
+    filename += String(file.name());
+    file.close();
+    if (filename.endsWith(".bin")) {
+      if (ufsp->remove(filename)) {
+        AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: binary file %s deletion done"), filename.c_str());
+      } else {
+        AddLog(LOG_LEVEL_ERROR, PSTR("TYA: MCU-Upgrade: binary file %s not deleted."), filename.c_str());
+      }
+    }
+    file = file = root.openNextFile();
+    yield();
+  }
+  root.close();
+}
 #endif
 
 #endif  // USE_TUYA_MCU_UPGRADE
