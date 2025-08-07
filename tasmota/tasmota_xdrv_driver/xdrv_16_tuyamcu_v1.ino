@@ -58,7 +58,7 @@
 #define TUYA_TYPE_STRING       0x03
 #define TUYA_TYPE_ENUM         0x04
 
-#define TUYA_BUFFER_SIZE       256 + 16
+#define TUYA_BUFFER_SIZE       (256 + 16)
 
 #include <TasmotaSerial.h>
 
@@ -585,11 +585,11 @@ void CmndTuyaUpgrade(void) { // Command to update the tuya mcu
   if (!TuyaMcuUpgradeInProgress()) {
     TuyaCleanupMcuUpgradeData(false);
  
-    char* parm[3] = { nullptr };
+    char* parm[4] = { nullptr };
     if (XdrvMailbox.data_len > 0) {
       uint8_t i = 0;
       char *p;
-      for (char *str = strtok_r(XdrvMailbox.data, ", ", &p); str && i < 3; str = strtok_r(nullptr, ", ", &p)) {
+      for (char *str = strtok_r(XdrvMailbox.data, ", ", &p); str && i < 4; str = strtok_r(nullptr, ", ", &p)) {
         parm[i] = str;
         AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: parameter[%d]: %s"), i, parm[i]);
         i++;
@@ -600,6 +600,13 @@ void CmndTuyaUpgrade(void) { // Command to update the tuya mcu
       Tuya.mcu_upg.new_version[versionStrLen - 1] = '\0';
 
       AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: version: %s"), Tuya.mcu_upg.new_version.get());
+#if defined ESP32
+      if (parm[3] != nullptr && strlen(parm[3]) > 0 && strcmp_P(parm[3], PSTR("f")) == 0) {
+        /* delete all *.bin files from filesystem */
+        AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: forced to clear all *.bin files before upgrade"));
+        Tuya.mcu_upg.flash_buffer.deleteAllBinFilesInRoot();
+      }
+#endif
       if (TuyaCreateStreamToMcuBinary(parm[2])) {
         if (Tuya.mcu_upg.flash_buffer.init(Tuya.mcu_upg.binary_len, parm[1], parm[2])) {
           if (Tuya.mcu_upg.binary_len == Tuya.mcu_upg.flash_buffer.writeToFlashOrFile(*Tuya.mcu_upg.wifi_client)) {
@@ -1010,9 +1017,10 @@ bool TuyaCreateStreamToMcuBinary(const char* url) {
   bool success = true;
   Tuya.mcu_upg.wifi_client = new WiFiClient;
   if (!Tuya.mcu_upg.wifi_client) {
-//    ResponseAppend_P(PSTR("\"%s\":\"%s\","), D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START);
-//    ResponseAppend_P(PSTR("\"%s\":\"%s\","), D_RESP_TUYA_UPGRADE_RESULT, D_RESP_TUYA_UPGRADE_RESULT_ERROR);
-//    ResponseAppend_P(PSTR("\"%s\":\"%s\""), D_RESP_TUYA_UPGRADE_ERROR, "Creating WiFiClient failed!");
+    ResponseAppend_P(PSTR("\"%s\":\"%s\",\"%s\":\"%s\",\"%s\":\"%s\""),\
+      D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START,\
+      D_RESP_TUYA_UPGRADE_RESULT, D_RESP_TUYA_UPGRADE_RESULT_ERROR,\
+      D_RESP_TUYA_UPGRADE_ERROR, "Creating WiFiClient failed!");
     return false;
   }
   Tuya.mcu_upg.http_client = new HTTPClient;
@@ -1033,22 +1041,25 @@ bool TuyaCreateStreamToMcuBinary(const char* url) {
 #endif
       if (freeBytes < Tuya.mcu_upg.binary_len) {
         success = false;
-//        ResponseAppend_P(PSTR("\"%s\":\"%s\","), D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START);
-//        ResponseAppend_P(PSTR("\"%s\":\"%s\","), D_RESP_TUYA_UPGRADE_RESULT, D_RESP_TUYA_UPGRADE_RESULT_ERROR);
-//        ResponseAppend_P(PSTR("\"%s\":\"%s\""), D_RESP_TUYA_UPGRADE_ERROR, "not enough memory for TuyaMCU binary");
+        ResponseAppend_P(PSTR("\"%s\":\"%s\",\"%s\":\"%s\",\"%s\":\"%s\""),\
+          D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START,\
+          D_RESP_TUYA_UPGRADE_RESULT, D_RESP_TUYA_UPGRADE_RESULT_ERROR,\
+          D_RESP_TUYA_UPGRADE_ERROR, "not enough memory for TuyaMCU binary");
         Tuya.mcu_upg.http_client->end();
       }
     } else {
-//      ResponseAppend_P(PSTR("\"%s\":\"%s\","), D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START);
-//      ResponseAppend_P(PSTR("\"%s\":\"%s\","), D_RESP_TUYA_UPGRADE_RESULT, D_RESP_TUYA_UPGRADE_RESULT_ERROR);
-//      ResponseAppend_P(PSTR("\"%s\":\"%s %d\""), D_RESP_TUYA_UPGRADE_ERROR, "http(s) GET failed with code", code);
+      ResponseAppend_P(PSTR("\"%s\":\"%s\",\"%s\":\"%s\",\"%s\":\"%s\""),\
+        D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START,\
+        D_RESP_TUYA_UPGRADE_RESULT, D_RESP_TUYA_UPGRADE_RESULT_ERROR,\
+        D_RESP_TUYA_UPGRADE_ERROR, "http(s) GET failed with code", code);
       Tuya.mcu_upg.http_client->end();
       success = false;
     }
   } else {
-//    ResponseAppend_P(PSTR("\"%s\":\"%s\","), D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START);
-//    ResponseAppend_P(PSTR("\"%s\":\"%s\","), D_RESP_TUYA_UPGRADE_RESULT, D_RESP_TUYA_UPGRADE_RESULT_ERROR);
-//    ResponseAppend_P(PSTR("\"%s\":\"%s\""), D_RESP_TUYA_UPGRADE_ERROR, "creating HTTPClient failed");
+    ResponseAppend_P(PSTR("\"%s\":\"%s\",\"%s\":\"%s\",\"%s\":\"%s\""),\
+      D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START,\
+      D_RESP_TUYA_UPGRADE_RESULT, D_RESP_TUYA_UPGRADE_RESULT_ERROR,\
+      D_RESP_TUYA_UPGRADE_ERROR, "creating HTTPClient failed");
     Tuya.mcu_upg.http_client->end();
     success = false;
   }
