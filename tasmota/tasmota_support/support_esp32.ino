@@ -83,7 +83,7 @@ bool NvmLoad(const char *sNvsName, const char *sName, void *pSettings, unsigned 
   nvs_handle_t handle;
   esp_err_t result = nvs_open(sNvsName, NVS_READONLY, &handle);
   if (result != ESP_OK) {
-    AddLog(LOG_LEVEL_DEBUG, PSTR("NVS: Error %d"), result);
+    AddLog(LOG_LEVEL_DEBUG, PSTR("NVS: Load Error 0x%x, %s"), result, sNvsName);
     return false;
   }
   size_t size = nSettingsLen;
@@ -99,7 +99,7 @@ void NvmSave(const char *sNvsName, const char *sName, const void *pSettings, uns
   nvs_handle_t handle;
   esp_err_t result = nvs_open(sNvsName, NVS_READWRITE, &handle);
   if (result != ESP_OK) {
-    AddLog(LOG_LEVEL_DEBUG, PSTR("NVS: Error %d"), result);
+    AddLog(LOG_LEVEL_DEBUG, PSTR("NVS: Save Error 0x%x, %s"), result, sNvsName);
   } else {
     nvs_set_blob(handle, sName, pSettings, nSettingsLen);
     nvs_commit(handle);
