@@ -101,10 +101,10 @@ bool TuyaUpgBuffer::init (uint32_t len, char* checksum, char* filename) {
   
   char * fname = fileOnly(filename);
   size_t fname_size = strlen(fname);
-  _fname = new char[fname_size + 2];
+  _fname = new char[fname_size + 6];
   _fname[0] = '/';
   strncpy(&_fname[1], fname, fname_size);
-  _fname[1 + fname_size] = '\0';
+  strcpy(&_fname[1 + fname_size], ".bin");
   
   if (ufsp->exists(_fname)) {
     AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: MCU-Upgrade: OTA file with equal filename exists: %s. It will be deleted now."), _fname);
