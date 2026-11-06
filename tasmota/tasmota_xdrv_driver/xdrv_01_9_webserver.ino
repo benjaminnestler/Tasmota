@@ -3327,7 +3327,7 @@ void HandleUploadDone(void) {
   }
 #endif  // USE_ZIGBEE_EZSP
 
-#if defined(USE_TUYA_MCU_UPGRADE)
+#if defined(USE_TUYA_MCU_UPGRADE) && not defined (FIRMWARE_SAFEBOOT)
   if ((UPL_TUYA == Web.upload_file_type) && !Web.upload_error && BUpload.ready) {
     BUpload.ready = false;  //  Make sure not to follow thru again
     TuyaMCUFlashFirmware(FlashDirectAccess(), BUpload.spi_hex_size);
