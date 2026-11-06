@@ -111,7 +111,8 @@ struct MCU_UPGRADE_DATA {
       uint8_t trigger_next_packet : 1;
       uint8_t request_version     : 1;
       uint8_t request_init_upgd   : 1;
-      uint8_t unused              : 4;
+      uint8_t initiate_pending    : 1;
+      uint8_t unused              : 3;
     };
   } flags;
 };

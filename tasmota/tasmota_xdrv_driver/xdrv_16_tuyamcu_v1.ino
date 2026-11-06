@@ -105,8 +105,11 @@ struct TUYA {
   std::unique_ptr<char[]> cur_version;    // current version string
 } Tuya;
 
+static uint32_t TuyaLastRxActivity = 0;
+
 #define TUYA_RECEIVE_TIMEOUT        250
 #define TUYA_SEND_TIMEOUT           250
+#define TUYA_UPGRADE_SERIAL_IDLE_TIME 500
 
 #define D_JSON_TUYA_MCU_RECEIVED "TuyaReceived"
 
@@ -536,8 +539,8 @@ uint32_t TuyaMCUFlashFirmware(uint8_t * data, uint32_t size){
   
   Tuya.mcu_upg.binary_len = size;
   if (Tuya.mcu_upg.flash_buffer.init(size, data)) {
-    AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: start OTA transfer ... "));
-    TuyaSendInitiateUpgrade();
+    AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: firmware ready, waiting for idle serial line"));
+    Tuya.mcu_upg.flags.initiate_pending = 1;
   }
   else {
     AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade OTA init failed!"));
@@ -627,7 +630,8 @@ void CmndTuyaUpgrade(void) { // Command to update the tuya mcu
                 D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START,\
                 D_RESP_TUYA_UPGRADE_CUR_VERSION, (Tuya.cur_version.get()) ? Tuya.cur_version.get() : "nA",\
                 D_RESP_TUYA_UPGRADE_UPD_VERSION, (Tuya.mcu_upg.new_version.get()) ? Tuya.mcu_upg.new_version.get() : "nA");
-              TuyaSendInitiateUpgrade();
+              Tuya.mcu_upg.flags.initiate_pending = 1;
+              AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: firmware ready, waiting for idle serial line"));
             } else {
               ResponseAppend_P(PSTR("\"%s\":\"%s\",\"%s\":%d"),\
                 D_RESP_TUYA_UPGRADE_INFO, D_RESP_TUYA_UPGRADE_INFO_START,\
@@ -935,6 +939,7 @@ void TuyaSendInitiateUpgrade(void) {
   payload_buffer[2] = (Tuya.mcu_upg.binary_len >> 8) & 0xFF;
   payload_buffer[3] = Tuya.mcu_upg.binary_len & 0xFF;
 
+  Tuya.mcu_upg.flags.initiate_pending = 0;
   Tuya.mcu_upg.response_timeout = millis() + 5000;
   Tuya.mcu_upg.flags.request_init_upgd = 1;
 
@@ -1095,7 +1100,8 @@ void TuyaCleanupMcuUpgradeData(bool success) {
 }
 
 bool TuyaMcuUpgradeInProgress(void) {
-  return Tuya.mcu_upg.flash_buffer.getCurrentPacketSize() > 0 || Tuya.mcu_upg.flags.request_version || Tuya.mcu_upg.flags.trigger_version;
+  return Tuya.mcu_upg.flash_buffer.getCurrentPacketSize() > 0 || Tuya.mcu_upg.flags.request_version ||
+         Tuya.mcu_upg.flags.trigger_version || Tuya.mcu_upg.flags.initiate_pending || Tuya.mcu_upg.flags.request_init_upgd;
 }
 
 void TuyaMcuUpgradeHandling (void) {
@@ -2037,6 +2043,7 @@ void TuyaSerialInput(void)
     //AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("TYA: RX 0x%02X"), serial_in_byte);
     yield();
     time_last_byte_received = millis();
+    TuyaLastRxActivity = time_last_byte_received;
 
     if (waiting_for_header) {
       if (serial_in_byte == 0x55) {
@@ -2052,9 +2059,16 @@ void TuyaSerialInput(void)
         Tuya.buffer[Tuya.byte_counter++] = 0xAA;
         Tuya.cmd_checksum = 0xFF;
       } else {
-        // Not a valid header, resync
+        // Not a valid header, resync (keep a possible new header start)
         Tuya.byte_counter = 0;
-        waiting_for_header = true;
+        Tuya.data_len = 0;
+        if (serial_in_byte == 0x55) {
+          Tuya.buffer[0] = 0x55;
+          Tuya.byte_counter = 1;
+          waiting_for_header = false;
+        } else {
+          waiting_for_header = true;
+        }
         continue;
       }
     }
@@ -2063,6 +2077,12 @@ void TuyaSerialInput(void)
       Tuya.cmd_checksum += serial_in_byte;
       if (Tuya.byte_counter == 6) {
         Tuya.data_len = Tuya.buffer[4] << 8 | Tuya.buffer[5];
+        if (Tuya.data_len > TUYA_BUFFER_SIZE - 7) {
+          AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("TYA: invalid serial frame length %u, resynchronizing"), Tuya.data_len);
+          Tuya.byte_counter = 0;
+          Tuya.data_len = 0;
+          waiting_for_header = true;
+        }
       }
     }
     else if (Tuya.byte_counter == (Tuya.data_len + 6)) {
@@ -2078,6 +2098,7 @@ void TuyaSerialInput(void)
         AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("TYA: Packet checksum mismatch, expected 0x%02X, got 0x%02X"), Tuya.cmd_checksum, serial_in_byte);
       }
       Tuya.byte_counter = 0;
+      Tuya.data_len = 0;
       waiting_for_header = true;
     }
     else if (Tuya.byte_counter < TUYA_BUFFER_SIZE - 1) {
@@ -2086,6 +2107,7 @@ void TuyaSerialInput(void)
     } else {
       // Buffer overflow, resync
       Tuya.byte_counter = 0;
+      Tuya.data_len = 0;
       waiting_for_header = true;
     }
   }
@@ -2095,6 +2117,7 @@ void TuyaSerialInput(void)
     AddLog(LOG_LEVEL_DEBUG_MORE,PSTR("TYA: serial receive timeout - dump buffer content"));
     AddLogBuffer(LOG_LEVEL_DEBUG_MORE,(uint8_t*)Tuya.buffer,Tuya.byte_counter);
     Tuya.byte_counter = 0;
+    Tuya.data_len = 0;
     waiting_for_header = true;
   }
 }
@@ -2392,6 +2415,16 @@ bool Xdrv16(uint32_t function) {
             yield();
           }
         }
+#ifdef USE_TUYA_MCU_UPGRADE
+        if (Tuya.mcu_upg.flags.initiate_pending &&
+            !TuyaSerial->available() && Tuya.byte_counter == 0 &&
+            TuyaPacketQueue_IsEmpty() && TuyaPacketSendQueue_IsEmpty() &&
+            !Tuya.time_last_cmd &&
+            (millis() - TuyaLastRxActivity) >= TUYA_UPGRADE_SERIAL_IDLE_TIME) {
+          AddLog(LOG_LEVEL_INFO, PSTR("TYA: MCU-Upgrade: serial line idle, sending initiate request"));
+          TuyaSendInitiateUpgrade();
+        }
+#endif
         break;
       case FUNC_PRE_INIT:
         TuyaInit();
